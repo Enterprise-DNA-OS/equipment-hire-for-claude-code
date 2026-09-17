@@ -1,13 +1,63 @@
 [
   {
-    "name": "week",
-    "title": "This week",
-    "subtitle": "Equipment Hire for Claude Code: what needs attention, rendered by npm run view",
+    "name": "yard",
+    "title": "The yard",
+    "subtitle": "Equipment Hire for Claude Code: what needs a decision, the off-hire queue, the runsheet and the board. Rendered by npm run view.",
     "sections": [
       {
-        "title": "Needs attention",
-        "note": "TODO(author): point this at the industry's attention view (overdue, stuck, quiet).",
-        "sql": "select 'replace me' as item, 'TODO(author)' as why"
+        "title": "Needs a decision",
+        "note": "Certificates expired on hire, services overdue, contracts over-running, money on the meter. Worst first.",
+        "sql": "select case reason when 'cert_expired_on_hire' then 'CERT EXPIRED, ON HIRE' when 'service_overdue_on_hire' then 'Service overdue, on hire' when 'no_pre_hire_check' then 'No pre-hire check' when 'on_stop_live' then 'On stop, gear still out' when 'cga_excluded_consumer' then 'CGA excluded vs a consumer' when 'off_hire_overdue' then 'Running past expected end' when 'pickup_waiting' then 'Awaiting pickup' when 'ppsr_missing' then 'No PPSR, closing on a year' when 'contract_unsigned' then 'Live with no signed contract' when 'over_credit_limit' then 'Over the credit limit' when 'unbilled_finished' then 'Finished, not billed' when 'invoice_overdue' then 'Invoice overdue' when 'invoice_draft' then 'Draft never sent' when 'damage_open' then 'Damage uncharged' when 'blocked_in_yard' then 'In the yard, cannot go out' when 'workshop_long' then 'Stuck in the workshop' when 'dead_fleet' then 'Dead fleet' when 'task_overdue' then 'Task overdue' else reason end as what, label as record, customer, asset as code, days, case when amount_cents > 0 then to_char(amount_cents / 100.0, 'FM$999,999,990') else '' end as value, detail from v_attention order by case reason when 'cert_expired_on_hire' then 1 when 'service_overdue_on_hire' then 2 when 'no_pre_hire_check' then 3 when 'on_stop_live' then 4 when 'cga_excluded_consumer' then 5 when 'off_hire_overdue' then 6 when 'pickup_waiting' then 7 when 'ppsr_missing' then 8 when 'contract_unsigned' then 9 when 'over_credit_limit' then 10 when 'unbilled_finished' then 11 when 'invoice_overdue' then 12 when 'invoice_draft' then 13 when 'damage_open' then 14 when 'blocked_in_yard' then 15 when 'workshop_long' then 16 when 'dead_fleet' then 17 else 18 end, days desc nulls last"
+      },
+      {
+        "title": "The off-hire queue",
+        "note": "Running past expected end is still charging, and the customer may not mean it to be. Ring them today.",
+        "sql": "select reason as what, ref, customer, asset_code as code, asset as machine, site, to_char(expected_end_on, 'YYYY-MM-DD') as since, days, case when unbilled_cents > 0 then to_char(unbilled_cents / 100.0, 'FM$999,999,990') else '' end as on_the_meter from v_off_hire_queue order by days desc"
+      },
+      {
+        "title": "The runsheet",
+        "note": "Scheduled deliveries and pickups, late ones first.",
+        "sql": "select kind, to_char(scheduled_on, 'YYYY-MM-DD') || case when scheduled_on < current_date and status = 'scheduled' then ' LATE' else '' end as date, driver, ref, customer, site, gear, coalesce(note, '') as note from v_runsheet where status = 'scheduled' order by scheduled_on"
+      },
+      {
+        "title": "The hire board",
+        "sql": "select ref, customer || case when on_stop then ' [STOP]' else '' end as customer, site, status, gear, to_char(start_on, 'YYYY-MM-DD') as start, case when expected_end_on is null then 'open' else to_char(expected_end_on, 'YYYY-MM-DD') || case when days_over > 0 then ' (' || days_over || 'd OVER)' else '' end end as expected_end, case when week_value_cents > 0 then to_char(week_value_cents / 100.0, 'FM$999,999,990') else '' end as per_week, case when unbilled_cents > 0 then to_char(unbilled_cents / 100.0, 'FM$999,999,990') else '' end as unbilled from v_hire_board order by case status when 'live' then 0 when 'off-hired' then 1 else 2 end, start_on"
+      },
+      {
+        "title": "Available now",
+        "note": "What the next phone call can have, and what is in the yard but blocked.",
+        "sql": "select code, category, description as machine, to_char(day_rate_cents / 100.0, 'FM$999,990') as day, to_char(week_rate_cents / 100.0, 'FM$999,990') as week, case when blocked then upper(blocked_reason) else 'yes' end as available, coalesce(to_char(next_booked_on, 'YYYY-MM-DD'), '') as next_booking from v_availability order by blocked, category, code"
+      }
+    ]
+  },
+  {
+    "name": "money",
+    "title": "The money",
+    "subtitle": "Utilisation, the unbilled meter, debtors and the fleet that earns nothing. Rendered by npm run view.",
+    "sections": [
+      {
+        "title": "Utilisation by category",
+        "note": "Earned 12mo counts invoiced lines only; the accrued meter is in the next section.",
+        "sql": "select category, fleet, on_hire, utilisation_pct || '%' as utilisation, in_workshop, idle_90d as idle_over_90d, case when idle_day_rate_cents > 0 then to_char(idle_day_rate_cents / 100.0, 'FM$999,990') else '' end as idle_day_rates, case when revenue_365_cents > 0 then to_char(revenue_365_cents / 100.0, 'FM$999,999,990') else '' end as earned_12mo, case when service_cost_365_cents > 0 then to_char(service_cost_365_cents / 100.0, 'FM$999,990') else '' end as workshop_12mo from v_utilisation order by utilisation_pct desc, category"
+      },
+      {
+        "title": "On the meter, not drafted",
+        "note": "Charge accrued on live and finished hires that no invoice covers. bill run drafts the lot.",
+        "sql": "select ref, customer, status, gear, to_char(unbilled_cents / 100.0, 'FM$999,999,990') as accrued from v_hire_board where unbilled_cents > 0 order by unbilled_cents desc"
+      },
+      {
+        "title": "Debtors",
+        "sql": "select number, customer, ref, to_char(total_cents / 100.0, 'FM$999,999,990') as total, status, to_char(due_on, 'YYYY-MM-DD') as due, case when status = 'draft' then 'NOT SENT' else bucket end as aged from v_debtors order by days_overdue desc"
+      },
+      {
+        "title": "Customer exposure",
+        "note": "Owing plus the unbilled meter, against the credit limit.",
+        "sql": "select customer || case when on_stop then ' [STOP]' else '' end as customer, account_type, live_hires, case when week_value_cents > 0 then to_char(week_value_cents / 100.0, 'FM$999,999,990') else '' end as per_week, case when owing_cents > 0 then to_char(owing_cents / 100.0, 'FM$999,999,990') else '' end as owing, case when unbilled_cents > 0 then to_char(unbilled_cents / 100.0, 'FM$999,999,990') else '' end as unbilled, case when exposure_cents > 0 then to_char(exposure_cents / 100.0, 'FM$999,999,990') else '' end as exposure, case when credit_limit_cents is null then '' else to_char(credit_limit_cents / 100.0, 'FM$999,999,990') || case when exposure_cents > credit_limit_cents then ' OVER' else '' end end as limit_ from v_customer_position where status = 'active' and (exposure_cents > 0 or live_hires > 0) order by exposure_cents desc"
+      },
+      {
+        "title": "The fleet that earns nothing",
+        "note": "Idle more than 90 days. Capital asleep in the yard.",
+        "sql": "select code, category, description as machine, days_idle, to_char(day_rate_cents / 100.0, 'FM$999,990') as day_rate, case when cost_cents > 0 then to_char(cost_cents / 100.0, 'FM$999,999,990') else '' end as capital, case when revenue_365_cents > 0 then to_char(revenue_365_cents / 100.0, 'FM$999,999,990') else '' end as earned_12mo from v_fleet where not on_hire and status = 'in-fleet' and coalesce(days_idle, 0) > 90 order by days_idle desc"
       }
     ]
   }

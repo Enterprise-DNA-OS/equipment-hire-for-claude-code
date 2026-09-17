@@ -1,11 +1,12 @@
 ---
-description: Check the records against the rules this industry lives under (the ones listed in docs/compliance.md) and report what is missing, late, or about to breach, with the rule cited.
+description: Run the six-rule compliance book against the records. Safe plant, pre-hire checks, test tags, MEWP and crane inspections, PPSR on long hires, consumer terms. Each rule cites its source.
 ---
 
-1. Read `docs/compliance.md`. Each rule has a name, the source it comes from, what a breach looks like in the data, and the SQL or command that finds it.
-2. Run each check. Use the CLI's `--json` output or a direct query through `scripts/lib/db.mjs`.
-3. Report as a table: rule, count, the worst example (name and days), the source. Order by severity: breached first, then due within 7 days, then clean.
-4. For anything breached, draft the fix the operator can approve: the record to update, the notice to send (draft to `drafts/`, never send), or the task to add.
-5. If a rule in `docs/compliance.md` is out of date, say so and stop. Do not guess at law. The operator confirms the rule, then you update the doc and the check together.
-
-Nothing here is legal advice. The doc records the rules the operator has told the system to enforce, with sources, and this command checks the data against them.
+1. Run `npm run hire -- compliance` (or one rule: `compliance test-and-tag`).
+2. Present breaches in the book's order, because it is severity order:
+   - **safe-plant** and **certified-access-plant** and **test-and-tag** breaches on gear that is ON HIRE are the drop-everything lines. A machine on a site with lapsed safety paperwork is the incident report you have not had yet. The fix is a swap or a workshop visit today, not a diary note.
+   - **pre-hire-checks** missing on live lines: backfill only what genuinely happened; otherwise do the check now and record when it was actually done.
+   - **ppsr** on a hire closing in on a year: register on ppsr.govt.nz, then `ppsr <ref> --registered=`. This is the rule that saves the machine when a customer folds.
+   - **consumer-terms**: fix the record with `contract <ref> --include-cga` and fix the paper contract to match.
+3. Every rule's source and reasoning lives in `docs/compliance.md`. Quote the source when explaining a breach; if the operator's question goes beyond what is written there, say so and stop. Nothing here is legal advice.
+4. When the operator changes how their business runs (different inspection cycle, an Australian state's rules, a bond regime), `/customise` rewrites `docs/compliance.md` and the checks in `scripts/hire.mjs` together, in the same commit, so the report never claims a rule the doc does not carry.

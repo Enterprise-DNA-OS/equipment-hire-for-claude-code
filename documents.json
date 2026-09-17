@@ -1,11 +1,73 @@
 [
   {
-    "name": "example",
-    "title": "TODO(author): the first document this industry must produce",
-    "for_each": "select gen_random_uuid() as id, 'Example' as name",
+    "name": "invoice",
+    "title": "Tax invoice",
+    "for_each": "select i.id, (i.number || ' ' || c.name) as name from invoices i join customers c on c.id = i.customer_id where i.status <> 'paid' order by i.issued_on desc",
     "file": "name",
     "sections": [
-      { "title": "Details", "sql": "select 'replace me' as item, $1::text as record_id" }
+      {
+        "title": "Invoice",
+        "note": "Rendered from the meter. Check it, then send it yourself: this system never sends anything.",
+        "sql": "select i.number, c.name as billed_to, h.ref as hire, h.site, coalesce(h.po_number, '') as order_no, to_char(i.issued_on, 'DD Month YYYY') as issued, to_char(i.due_on, 'DD Month YYYY') as due, to_char(i.total_cents / 100.0, 'FM$999,999,990.00') as total from invoices i join customers c on c.id = i.customer_id join hires h on h.id = i.hire_id where i.id = $1"
+      },
+      {
+        "title": "Lines",
+        "sql": "select il.description, to_char(il.amount_cents / 100.0, 'FM$999,999,990.00') as amount from invoice_lines il where il.invoice_id = $1 order by il.created_at"
+      }
+    ]
+  },
+  {
+    "name": "hire-agreement-draft",
+    "title": "Hire agreement (draft)",
+    "for_each": "select h.id, (h.ref || ' ' || c.name) as name from hires h join customers c on c.id = h.customer_id where h.status in ('booked', 'live') and h.contract_signed_on is null order by h.start_on",
+    "file": "name",
+    "sections": [
+      {
+        "title": "This is a draft. Nobody has signed anything.",
+        "note": "The agreement carries the contract's own machines, rates and dates. Put it on your letterhead, attach your terms, sign it at the counter or the gate. A consumer customer keeps the Consumer Guarantees Act 1993 no matter what the terms say (s 43).",
+        "sql": "select c.name as hirer, coalesce(c.contact_name, '') as contact, h.ref as our_reference, h.site as site_address, to_char(h.start_on, 'DD Month YYYY') as hire_from, coalesce(to_char(h.expected_end_on, 'DD Month YYYY'), 'open-ended, until off-hired') as expected_end, coalesce(h.po_number, '') as order_no, c.account_type from hires h join customers c on c.id = h.customer_id where h.id = $1"
+      },
+      {
+        "title": "The gear and the rates",
+        "sql": "select a.code, a.description as machine, coalesce(a.serial, '') as serial, to_char(hl.day_rate_cents / 100.0, 'FM$999,990.00') as per_day, to_char(hl.week_rate_cents / 100.0, 'FM$999,990.00') as per_week from hire_lines hl join assets a on a.id = hl.asset_id where hl.hire_id = $1 order by a.code"
+      },
+      {
+        "title": "How charging works",
+        "sql": "select 'Charging runs per calendar day from the day the gear leaves the yard. The day it comes back is not charged; a same-day return charges one day. Every run of seven days is capped at the week rate.' as terms, 'Off-hire happens when you tell us, not when you finish with the machine. Ring it off the moment you are done.' as off_hire, 'Damage found at the return check is reported with photos, then charged or waived in writing.' as damage where exists (select 1 from hires where id = $1)"
+      }
+    ]
+  },
+  {
+    "name": "off-hire-docket",
+    "title": "Off-hire docket",
+    "for_each": "select hl.id, (h.ref || ' ' || a.code) as name from hire_lines hl join hires h on h.id = hl.hire_id join assets a on a.id = hl.asset_id where hl.off_hired_on is not null and hl.off_hired_on >= current_date - 30 order by hl.off_hired_on desc",
+    "file": "name",
+    "sections": [
+      {
+        "title": "Return record",
+        "note": "One docket per machine off hire in the last 30 days: the dates, the days charged, and what the return check found.",
+        "sql": "select h.ref as hire, c.name as customer, h.site, a.code, a.description as machine, to_char(hl.on_hired_on, 'DD Month YYYY') as out, to_char(hl.off_hired_on, 'DD Month YYYY') as off_hire, coalesce(to_char(hl.picked_up_on, 'DD Month YYYY'), 'NOT YET PICKED UP') as back_in_yard, lc.total_days as days_charged from hire_lines hl join hires h on h.id = hl.hire_id join customers c on c.id = h.customer_id join assets a on a.id = hl.asset_id join v_line_charge lc on lc.line_id = hl.id where hl.id = $1"
+      },
+      {
+        "title": "Damage found at the return check",
+        "sql": "select to_char(dr.reported_on, 'DD Month YYYY') as reported, dr.description, case when dr.est_cost_cents is not null then to_char(dr.est_cost_cents / 100.0, 'FM$999,999,990.00') else '' end as estimate, dr.status, coalesce(dr.waived_reason, '') as note from damage_reports dr where dr.hire_line_id = $1 order by dr.reported_on"
+      }
+    ]
+  },
+  {
+    "name": "workshop-job-card",
+    "title": "Workshop job card",
+    "for_each": "select s.id, (a.code || ' ' || s.kind) as name from services s join assets a on a.id = s.asset_id where s.status <> 'done' order by s.opened_on",
+    "file": "name",
+    "sections": [
+      {
+        "title": "The job",
+        "sql": "select a.code, a.description as machine, coalesce(a.make, '') as make, coalesce(a.model, '') as model, coalesce(a.serial, '') as serial, case when a.meter_hours is not null then a.meter_hours || 'h' else '' end as meter, s.kind as job, s.status, to_char(s.opened_on, 'DD Month YYYY') as opened, coalesce(to_char(s.due_on, 'DD Month YYYY'), '') as due, coalesce(st.full_name, '') as mechanic, coalesce(s.note, '') as note from services s join assets a on a.id = s.asset_id left join staff st on st.id = s.mechanic_id where s.id = $1"
+      },
+      {
+        "title": "Service history on this machine",
+        "sql": "select to_char(s2.done_on, 'DD Mon YYYY') as done, s2.kind, case when s2.cost_cents is not null then to_char(s2.cost_cents / 100.0, 'FM$999,990.00') else '' end as cost, coalesce(s2.note, '') as note from services s2 where s2.asset_id = (select asset_id from services where id = $1) and s2.status = 'done' order by s2.done_on desc limit 10"
+      }
     ]
   }
 ]

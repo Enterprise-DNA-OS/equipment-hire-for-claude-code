@@ -13,9 +13,9 @@ That layer used to be the whole product, because talking to a database was hard.
 
 ## What you give up
 
-- **A visual board.** Stages are a table you ask about, not cards you drag.
-- **A phone app.** It runs where Claude Code runs.
-- **A vendor help desk.** This is open source. Enterprise DNA supports the installed version for businesses that want someone to call.
+- **A phone app in the ute.** A driver rings the desk or works from a laptop; the runsheet prints. If your drivers must tap dockets on a phone with no signal, keep the app for the trucks and use this for the desk, the workshop and the money.
+- **A drag-and-drop availability planner.** Availability is a table you ask, with the blocked gear and the next booking on it, not a calendar you drag.
+- **A vendor help desk and an ERP connector.** This is open source, and your accounting system stays where it is: invoices draft here, a person sends them. Enterprise DNA supports the installed version for businesses that want someone to call.
 
 ## Who this fits
 
